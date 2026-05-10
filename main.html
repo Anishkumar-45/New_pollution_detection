@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<script src="main.js"></script>
+<script src="mobile.js"></script>
+<link rel="stylesheet" href="Main.css">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Map urban noise pollution levels using phone-based microphone measurements. Record, upload CSV, and visualize noise heatmaps.">
+    <meta name="theme-color" content="#0a0e1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>NoiseMap — Urban Noise Pollution Mapper</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<!-- Animated Background Orbs -->
+<div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+</div>
+
+<!-- Header -->
+<header id="app-header">
+    <div class="header-inner">
+        <div class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 40 40" fill="none">
+                    <circle cx="20" cy="20" r="18" stroke="url(#grad1)" stroke-width="2.5" fill="none"/>
+                    <circle cx="20" cy="20" r="12" stroke="url(#grad1)" stroke-width="2" fill="none" opacity="0.6"/>
+                    <circle cx="20" cy="20" r="6" fill="url(#grad1)"/>
+                    <defs>
+                        <linearGradient id="grad1" x1="0" y1="0" x2="40" y2="40">
+                            <stop offset="0%" stop-color="#00d4aa"/>
+                            <stop offset="100%" stop-color="#7c3aed"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <h1>NoiseMap</h1>
+        </div>
+        <nav id="main-nav">
+            <button class="nav-btn active" data-tab="recorder" id="nav-recorder">
+                <span class="nav-icon">🎙️</span>
+                <span class="nav-label">Recorder</span>
+            </button>
+            <button class="nav-btn" data-tab="mobile" id="nav-mobile">
+                <span class="nav-icon">📱</span>
+                <span class="nav-label">Mobile Map</span>
+            </button>
+            <button class="nav-btn" data-tab="upload" id="nav-upload">
+                <span class="nav-icon">📁</span>
+                <span class="nav-label">Upload CSV</span>
+            </button>
+            <button class="nav-btn" data-tab="heatmap" id="nav-heatmap">
+                <span class="nav-icon">🗺️</span>
+                <span class="nav-label">Heatmap</span>
+            </button>
+            <button class="nav-btn" data-tab="analytics" id="nav-analytics">
+                <span class="nav-icon">📈</span>
+                <span class="nav-label">Analytics</span>
+            </button>
+            <button class="nav-btn" data-tab="data" id="nav-data">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Data</span>
+            </button>
+        </nav>
+    </div>
+</header>
+
+<!-- Main Content -->
+<main id="app-main">
+
+    <!-- ========== RECORDER TAB ========== -->
+    <section class="tab-content active" id="tab-recorder">
+        <div class="section-header">
+            <h2 class="gradient-text">Live Noise Recorder</h2>
+            <p>Use your phone's microphone to measure ambient noise levels in real-time</p>
+        </div>
+
+        <div class="recorder-grid">
+            <!-- Decibel Meter -->
+            <div class="glass-card glow-card meter-card">
+                <div class="meter-container" id="meter-container">
+                    <svg class="meter-ring" viewBox="0 0 200 200">
+                        <circle class="meter-bg" cx="100" cy="100" r="85" />
+                        <circle class="meter-fill" cx="100" cy="100" r="85" id="meter-fill" />
+                    </svg>
+                    <div class="meter-value">
+                        <span class="db-value" id="db-value">0.0</span>
+                        <span class="db-unit">dB</span>
+                    </div>
+                    <div class="meter-label" id="meter-label">Tap to Start</div>
+                </div>
+                <div class="meter-legend">
+                    <div class="legend-item quiet"><span class="dot"></span> Quiet (0–40 dB)</div>
+                    <div class="legend-item moderate"><span class="dot"></span> Moderate (40–70 dB)</div>
+                    <div class="legend-item loud"><span class="dot"></span> Loud (70–90 dB)</div>
+                    <div class="legend-item danger"><span class="dot"></span> Dangerous (90+ dB)</div>
+                </div>
+
+                <!-- Waveform Visualizer -->
+                <div class="waveform-container">
+                    <canvas id="waveform-canvas" width="400" height="80"></canvas>
+                    <div class="waveform-label">Audio Waveform</div>
+                </div>
+
+                <button class="btn btn-primary btn-glow ripple-btn" id="btn-record">
+                    <span class="btn-icon">🎙️</span> Start Recording
+                </button>
+            </div>
+
+            <!-- Location & Save -->
+            <div class="glass-card glow-card location-card">
+                <h3>📍 Location Details</h3>
+                <div class="gps-status" id="gps-status">
+                    <div class="status-dot"></div>
+                    <span>GPS: Waiting...</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="input-lat">Latitude</label>
+                    <input type="number" id="input-lat" placeholder="e.g. 28.6139" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="input-lng">Longitude</label>
+                    <input type="number" id="input-lng" placeholder="e.g. 77.2090" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="input-location">Location Name</label>
+                    <input type="text" id="input-location" placeholder="e.g. Main Street">
+                </div>
+                <div class="form-group">
+                    <label for="input-db-manual">Decibel Level (manual)</label>
+                    <input type="number" id="input-db-manual" placeholder="Or use recorder above" step="0.1">
+                </div>
+
+                <button class="btn btn-secondary ripple-btn" id="btn-get-location">
+                    <span class="btn-icon">📡</span> Auto-detect GPS
+                </button>
+                <button class="btn btn-primary ripple-btn" id="btn-save-measurement">
+                    <span class="btn-icon">💾</span> Save Measurement
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== MOBILE MAPPING TAB ========== -->
+    <section class="tab-content" id="tab-mobile">
+        <div class="section-header">
+            <h2 class="gradient-text">📱 Mobile Noise Mapping</h2>
+            <p>Walk around with your phone to auto-record noise levels along your path</p>
+        </div>
+
+        <div class="mobile-mapping-container">
+            <!-- Mobile Map -->
+            <div class="glass-card mobile-map-card">
+                <div id="mobile-map"></div>
+
+                <!-- Floating HUD overlay -->
+                <div class="mobile-hud" id="mobile-hud">
+                    <!-- Live dB display -->
+                    <div class="hud-db-display" id="hud-db-display">
+                        <div class="hud-db-value" id="hud-db-value">0.0</div>
+                        <div class="hud-db-unit">dB</div>
+                        <div class="hud-noise-label" id="hud-noise-label">—</div>
+                    </div>
+
+                    <!-- Stats row -->
+                    <div class="hud-stats-row">
+                        <div class="hud-stat">
+                            <span class="hud-stat-value" id="hud-points">0</span>
+                            <span class="hud-stat-label">Points</span>
+                        </div>
+                        <div class="hud-stat">
+                            <span class="hud-stat-value" id="hud-distance">0m</span>
+                            <span class="hud-stat-label">Distance</span>
+                        </div>
+                        <div class="hud-stat">
+                            <span class="hud-stat-value" id="hud-avg-db">—</span>
+                            <span class="hud-stat-label">Avg dB</span>
+                        </div>
+                        <div class="hud-stat">
+                            <span class="hud-stat-value" id="hud-duration">0:00</span>
+                            <span class="hud-stat-label">Time</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GPS accuracy indicator -->
+                <div class="gps-accuracy-badge" id="gps-accuracy-badge">
+                    <div class="gps-accuracy-dot"></div>
+                    <span id="gps-accuracy-text">GPS: Waiting...</span>
+                </div>
+
+                <!-- Mobile map legend -->
+                <div class="mobile-map-legend">
+                    <h4>Noise Level</h4>
+                    <div class="legend-gradient"></div>
+                    <div class="legend-labels">
+                        <span>Quiet</span>
+                        <span>Moderate</span>
+                        <span>Loud</span>
+                        <span>⚠️</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls below map -->
+            <div class="mobile-controls-panel">
+                <div class="mobile-settings glass-card">
+                    <h3>⚙️ Mapping Settings</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="mapping-interval">Recording Interval</label>
+                            <select id="mapping-interval" class="form-select">
+                                <option value="3">Every 3 seconds</option>
+                                <option value="5" selected>Every 5 seconds</option>
+                                <option value="10">Every 10 seconds</option>
+                                <option value="15">Every 15 seconds</option>
+                                <option value="30">Every 30 seconds</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="mapping-route-name">Route / Area Name</label>
+                            <input type="text" id="mapping-route-name" placeholder="e.g. Morning Walk Route">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mobile-action-buttons">
+                    <button class="btn btn-primary btn-glow btn-lg mobile-start-btn ripple-btn" id="btn-start-mapping">
+                        <span class="btn-icon">🚀</span> Start Mobile Mapping
+                    </button>
+                    <button class="btn btn-secondary btn-lg mobile-stop-btn ripple-btn" id="btn-stop-mapping" style="display:none;">
+                        <span class="btn-icon">⏹️</span> Stop & Save Route
+                    </button>
+                    <button class="btn btn-outline btn-lg ripple-btn" id="btn-center-map">
+                        <span class="btn-icon">🎯</span> Center on Me
+                    </button>
+                </div>
+
+                <!-- Route summary (shown after stop) -->
+                <div class="route-summary glass-card" id="route-summary" style="display:none;">
+                    <h3>📊 Route Summary</h3>
+                    <div class="route-stats-grid">
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-points">0</div>
+                            <div class="route-stat-label">Data Points</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-distance">0m</div>
+                            <div class="route-stat-label">Distance</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-avg">— dB</div>
+                            <div class="route-stat-label">Avg Noise</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-max">— dB</div>
+                            <div class="route-stat-label">Peak Noise</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-min">— dB</div>
+                            <div class="route-stat-label">Min Noise</div>
+                        </div>
+                        <div class="route-stat">
+                            <div class="route-stat-value" id="summary-duration">0:00</div>
+                            <div class="route-stat-label">Duration</div>
+                        </div>
+                    </div>
+                    <div class="route-summary-actions">
+                        <button class="btn btn-primary ripple-btn" id="btn-save-route">
+                            <span class="btn-icon">💾</span> Save to Server
+                        </button>
+                        <button class="btn btn-outline ripple-btn" id="btn-new-route">
+                            <span class="btn-icon">🔄</span> New Route
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== UPLOAD TAB ========== -->
+    <section class="tab-content" id="tab-upload">
+        <div class="section-header">
+            <h2 class="gradient-text">Upload CSV Data</h2>
+            <p>Import noise measurements from CSV files with latitude, longitude, and decibel columns</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="glass-card glow-card upload-card">
+                <div class="drop-zone" id="drop-zone">
+                    <div class="drop-icon">📄</div>
+                    <h3>Drag & Drop CSV File</h3>
+                    <p>or click to browse files</p>
+                    <input type="file" id="file-input" accept=".csv" hidden>
+                </div>
+                <!-- Upload progress -->
+                <div class="upload-progress" id="upload-progress" style="display:none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <span class="progress-text" id="progress-text">Uploading...</span>
+                </div>
+                <div class="upload-actions">
+                    <a href="/api/sample" class="btn btn-outline ripple-btn" id="btn-download-sample">
+                        <span class="btn-icon">⬇️</span> Download Sample CSV
+                    </a>
+                </div>
+            </div>
+
+            <!-- CSV Preview -->
+            <div class="glass-card preview-card" id="preview-card" style="display: none;">
+                <h3>📋 CSV Preview</h3>
+                <div class="table-wrapper">
+                    <table id="preview-table">
+                        <thead id="preview-thead"></thead>
+                        <tbody id="preview-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="preview-actions">
+                    <span class="record-count" id="preview-count">0 records</span>
+                    <button class="btn btn-primary ripple-btn" id="btn-upload-confirm">
+                        <span class="btn-icon">🚀</span> Upload Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== HEATMAP TAB ========== -->
+    <section class="tab-content" id="tab-heatmap">
+        <div class="section-header">
+            <h2 class="gradient-text">Noise Heatmap</h2>
+            <p>Interactive map showing noise pollution intensity across measured locations</p>
+        </div>
+
+        <div class="glass-card glow-card map-card">
+            <div class="map-toolbar">
+                <button class="btn btn-sm btn-outline ripple-btn" id="btn-load-sample">
+                    <span class="btn-icon">📥</span> Load Sample Data
+                </button>
+                <button class="btn btn-sm btn-outline ripple-btn" id="btn-refresh-map">
+                    <span class="btn-icon">🔄</span> Refresh Map
+                </button>
+                <button class="btn btn-sm btn-outline ripple-btn" id="btn-clear-data">
+                    <span class="btn-icon">🗑️</span> Clear All Data
+                </button>
+            </div>
+            <div id="map"></div>
+            <div class="map-legend" id="map-legend">
+                <h4>Noise Level (dB)</h4>
+                <div class="legend-gradient"></div>
+                <div class="legend-labels">
+                    <span>0 dB</span>
+                    <span>30</span>
+                    <span>50</span>
+                    <span>70</span>
+                    <span>90+</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========== ANALYTICS TAB ========== -->
+    <section class="tab-content" id="tab-analytics">
+        <div class="section-header">
+            <h2 class="gradient-text">📈 Analytics Dashboard</h2>
+            <p>Deep insights and visualizations of your noise pollution data</p>
+        </div>
+
+        <!-- Summary Stats Row -->
+        <div class="analytics-stats-row" id="analytics-stats-row">
+            <div class="analytics-stat-card glass-card glow-card">
+                <div class="analytics-stat-icon">📊</div>
+                <div class="analytics-stat-value counter" id="analytics-total">0</div>
+                <div class="analytics-stat-label">Total Readings</div>
+            </div>
+            <div class="analytics-stat-card glass-card glow-card">
+                <div class="analytics-stat-icon">📏</div>
+                <div class="analytics-stat-value counter" id="analytics-avg">0</div>
+                <div class="analytics-stat-label">Average dB</div>
+            </div>
+            <div class="analytics-stat-card glass-card glow-card">
+                <div class="analytics-stat-icon">🔺</div>
+                <div class="analytics-stat-value counter" id="analytics-max">0</div>
+                <div class="analytics-stat-label">Peak dB</div>
+            </div>
+            <div class="analytics-stat-card glass-card glow-card">
+                <div class="analytics-stat-icon">🔻</div>
+                <div class="analytics-stat-value counter" id="analytics-min">0</div>
+                <div class="analytics-stat-label">Lowest dB</div>
+            </div>
+        </div>
+
+        <!-- Noise Index Score -->
+        <div class="glass-card glow-card noise-index-card">
+            <div class="noise-index-header">
+                <h3>🎯 Noise Index Score</h3>
+                <p>Weighted pollution severity — lower is better</p>
+            </div>
+            <div class="noise-index-gauge">
+                <svg class="index-ring" viewBox="0 0 200 200">
+                    <circle class="index-bg" cx="100" cy="100" r="80"/>
+                    <circle class="index-fill" cx="100" cy="100" r="80" id="index-fill"/>
+                </svg>
+                <div class="index-value-container">
+                    <span class="index-value" id="index-value">0</span>
+                    <span class="index-label">/ 100</span>
+                </div>
+            </div>
+            <div class="index-verdict" id="index-verdict">No data available</div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+            <!-- Top Locations Bar Chart -->
+            <div class="glass-card glow-card chart-card">
+                <h3>🏙️ Top 10 Noisiest Locations</h3>
+                <div class="chart-container">
+                    <canvas id="chart-top-locations"></canvas>
+                </div>
+            </div>
+
+            <!-- Category Distribution Doughnut -->
+            <div class="glass-card glow-card chart-card">
+                <h3>🎨 Noise Category Distribution</h3>
+                <div class="chart-container chart-container-sm">
+                    <canvas id="chart-categories"></canvas>
+                </div>
+                <div class="category-badges" id="category-badges">
+                    <span class="cat-badge cat-quiet">🟢 Quiet: <strong id="cat-count-quiet">0</strong></span>
+                    <span class="cat-badge cat-moderate">🟡 Moderate: <strong id="cat-count-moderate">0</strong></span>
+                    <span class="cat-badge cat-loud">🟠 Loud: <strong id="cat-count-loud">0</strong></span>
+                    <span class="cat-badge cat-danger">🔴 Dangerous: <strong id="cat-count-danger">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Time Series Line Chart (full width) -->
+            <div class="glass-card glow-card chart-card chart-card-wide">
+                <h3>📉 Noise Levels Over Time</h3>
+                <div class="chart-container">
+                    <canvas id="chart-timeline"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="analytics-actions">
+            <button class="btn btn-primary ripple-btn" id="btn-refresh-analytics">
+                <span class="btn-icon">🔄</span> Refresh Analytics
+            </button>
+        </div>
+    </section>
+
+    <!-- ========== DATA TAB ========== -->
+    <section class="tab-content" id="tab-data">
+        <div class="section-header">
+            <h2 class="gradient-text">Measurement Data</h2>
+            <p>All recorded noise measurements in a sortable table</p>
+        </div>
+
+        <div class="glass-card glow-card data-card">
+            <div class="data-toolbar">
+                <div class="data-stats">
+                    <div class="stat-badge" id="stat-total">
+                        <span class="stat-value">0</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat-badge" id="stat-avg">
+                        <span class="stat-value">0</span>
+                        <span class="stat-label">Avg dB</span>
+                    </div>
+                    <div class="stat-badge" id="stat-max">
+                        <span class="stat-value">0</span>
+                        <span class="stat-label">Max dB</span>
+                    </div>
+                    <div class="stat-badge" id="stat-min">
+                        <span class="stat-value">0</span>
+                        <span class="stat-label">Min dB</span>
+                    </div>
+                </div>
+                <div class="data-actions">
+                    <button class="btn btn-sm btn-primary ripple-btn" id="btn-export-csv">
+                        <span class="btn-icon">📥</span> Export CSV
+                    </button>
+                    <button class="btn btn-sm btn-outline ripple-btn" id="btn-refresh-data">
+                        <span class="btn-icon">🔄</span> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search & Filter Bar -->
+            <div class="search-filter-bar">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="data-search" placeholder="Search by location name..." class="search-input">
+                </div>
+                <div class="filter-select-wrapper">
+                    <select id="data-category-filter" class="form-select filter-select">
+                        <option value="all">All Categories</option>
+                        <option value="quiet">🟢 Quiet (0–40 dB)</option>
+                        <option value="moderate">🟡 Moderate (40–70 dB)</option>
+                        <option value="loud">🟠 Loud (70–90 dB)</option>
+                        <option value="dangerous">🔴 Dangerous (90+ dB)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table id="data-table">
+                    <thead>
+                    <tr>
+                        <th data-sort="index">#</th>
+                        <th data-sort="location">Location</th>
+                        <th data-sort="decibel">Decibel (dB)</th>
+                        <th data-sort="latitude">Latitude</th>
+                        <th data-sort="longitude">Longitude</th>
+                        <th data-sort="timestamp">Timestamp</th>
+                    </tr>
+                    </thead>
+                    <tbody id="data-tbody"></tbody>
+                </table>
+            </div>
+            <div class="empty-state" id="empty-state">
+                <div class="empty-icon">📭</div>
+                <p>No measurements yet. Record or upload data to get started.</p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Toast Notification -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mobile-mapping.js') }}"></script>
+</body>
+</html>
